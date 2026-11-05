@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multicator Turtle</title>
+<style>
+:root{--bg:#0f1115;--card:#171a21;--bd:#2a2f3a;--tx:#e8eaf0;--mu:#8b93a5;--g:#3ddc84;--r:#ff5c5c;--y:#ffd54a;--a:#4dd0e1}
+@media (prefers-color-scheme: light){:root{--bg:#f4f5f8;--card:#fff;--bd:#d9dce4;--tx:#1a1d24;--mu:#606878;--g:#0a8f4a;--r:#d32f2f;--y:#b58900;--a:#00838f}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 -apple-system,system-ui,Segoe UI,Roboto,sans-serif;padding:12px;max-width:900px;margin:auto}
+h1{font-size:17px;margin:4px 0 10px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:12px}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+label{display:flex;flex-direction:column;font-size:12px;color:var(--mu);flex:1 1 130px}
+input,button,select{font:inherit;padding:8px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);width:100%}
+button{background:var(--a);color:#000;border:0;font-weight:600;cursor:pointer;align-self:flex-end;flex:1 1 130px}
+table{width:100%;border-collapse:collapse}
+td{padding:7px 4px;border-bottom:1px solid var(--bd)}
+td:last-child{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+td:nth-child(2){color:var(--mu);text-align:right;font-variant-numeric:tabular-nums}
+.g{color:var(--g)}.r{color:var(--r)}.y{color:var(--y)}.m{color:var(--mu)}
+canvas{width:100%;height:220px;display:block}
+#st{font-size:12px;color:var(--mu);margin-top:6px}
+.gauge{position:relative;height:14px;border-radius:7px;margin:34px 6px 8px;background:linear-gradient(90deg,var(--r) 0%,var(--r) 30%,var(--y) 40%,var(--y) 60%,var(--g) 70%,var(--g) 100%);opacity:.9}
+.gauge .mid{position:absolute;left:50%;top:-4px;bottom:-4px;width:2px;background:var(--tx);opacity:.6}
+.turtle{position:absolute;top:-30px;font-size:28px;line-height:1;transform:translateX(-50%);transition:left .6s ease;filter:drop-shadow(0 2px 2px rgba(0,0,0,.4))}
+.gl{display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin:0 6px}
+#zone{text-align:center;font-size:18px;font-weight:700;margin-top:8px}
+#parts{font-size:12px;color:var(--mu);text-align:center;margin-top:4px}
+.note{font-size:12px;color:var(--mu);margin-top:8px}
+#accState{text-align:center;font-size:20px;font-weight:700;margin:6px 0 10px}
+#accTbl td{font-size:15px}
+</style>
+</head>
+<body>
+<h1>Multicator Turtle — punteggio 0-100 (Multicator Table)</h1>
+
+<div class="card">
+  <div class="row">
+    <label>Worker Yahoo
+      <input id="worker" value="https://yahooproxy.b864v27974.workers.dev">
+    </label>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <label>Dati<select id="mode"><option value="i">Intraday 1 min</option><option value="d">Giornalieri</option></select></label>
+    <label>Simbolo<input id="sym" value="QQQ"></label>
+    <label>Storico<input id="range" value="5d"></label>
+    <label>Preset<select id="preset"><option>Manual</option><option>Scalping</option><option>Swing</option></select></label>
+    <label>Conferma (barre)<input id="conf" type="number" min="1" max="20" value="3"></label>
+    <label>Conferma uscita (barre)<input id="confx" type="number" min="1" max="20" value="2"></label>
+    <label>Voti<select id="votes"><option value="d">Direzionali</option><option value="o">Originali (Pine)</option></select></label>
+    <button id="go">Calcola</button>
+  </div>
+  <details style="margin-top:8px"><summary class="m" style="cursor:pointer;font-size:12px">Pesi dei voti (solo modalità direzionale)</summary>
+    <div class="row" id="wbox" style="margin-top:8px"></div>
+    <button id="wreset" style="margin-top:8px;flex:none;width:auto;padding:6px 12px">Ripristina pesi predefiniti</button>
+  </details>
+  <div id="st"></div>
+</div>
+
+<div id="out" style="display:none">
+  <div class="card">
+    <div class="gl"><span class="r">◀ SHORT</span><span class="m">neutra</span><span class="g">LONG ▶</span></div>
+    <div class="gauge"><div class="mid"></div><div class="turtle" id="turtle">🐢</div></div>
+    <div id="zone"></div>
+    <div id="parts"></div>
+  </div>
+  <div class="card">
+    <table id="tbl"></table>
+    <div class="note" id="note"></div>
+  </div>
+  <div class="card">
+    <div class="m" style="font-size:12px;margin-bottom:4px">Punteggio 0-100 nel tempo (sfondo = zona confermata: rosso short, verde long). Non è un backtest: non dice se quei segnali fossero profittevoli.</div>
+    <canvas id="cv"></canvas>
+  </div>
+  <div class="card" id="acc">
+    <div style="font-weight:700;font-size:14px;margin-bottom:4px">MISURATORE DI ACCELERAZIONE DEL SEGNALE</div>
+    <div id="accState" class="m">DATI INSUFFICIENTI</div>
+    <table id="accTbl"></table>
+    <div class="note" id="accNote"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const store = { get:k=>{try{return localStorage.getItem(k)}catch(e){return null}}, set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}} };
+$('worker').value = store.get('mc_worker') || 'https://yahooproxy.b864v27974.workers.dev';
+$('sym').value    = store.get('mc_sym') || 'QQQ';
+$('mode').value   = store.get('mc_mode') || 'i';
+$('preset').value = store.get('mc_preset') || 'Manual';
+$('votes').value  = store.get('mc_votes') || 'd';
+$('conf').value   = store.get('mc_conf') || '3';
+$('confx').value  = store.get('mc_confx') || '2';
+const DEFW = [1.5,1.5,2,1,2,0.75,1,0.75,1.25];
+const WN = ['EMA200','ADX/DI','MACD','RSI','Supertrend','Stoch','MFI','Volume','Donchian'];
+$('wbox').innerHTML = WN.map((n,i)=>`<label style="flex:1 1 90px">${n}<input id="w${i}" type="number" min="0" step="0.25"></label>`).join('');
+(function(){ let sw=null; try{ sw=JSON.parse(store.get('mc_w')); }catch(e){} WN.forEach((n,i)=>{ $('w'+i).value = (sw&&isFinite(sw[i])&&sw[i]>=0) ? sw[i] : DEFW[i]; }); })();
+const readW = () => WN.map((n,i)=>{ const x=parseFloat($('w'+i).value); return isFinite(x)&&x>=0 ? x : DEFW[i]; });
+$('range').value  = store.get('mc_range_'+$('mode').value) || ($('mode').value==='i' ? '5d' : '2y');
+
+const fmt = (v,d=2) => (v==null||!isFinite(v)) ? 'n/d' : v.toFixed(d);
+
+// ---------- primitive indicatori (stile Pine) ----------
+function smooth(a,p,kind){ // 'ema' (alpha 2/(p+1)) o 'rma' (alpha 1/p), seed = SMA
+  const n=a.length, o=new Array(n).fill(null), al = kind==='ema' ? 2/(p+1) : 1/p;
+  let f=-1; for(let i=0;i<n;i++){ if(a[i]!=null){ f=i; break; } }
+  if(f<0 || f+p>n) return o;
+  let s=0; for(let j=f;j<f+p;j++){ if(a[j]==null) return o; s+=a[j]; }
+  o[f+p-1]=s/p;
+  for(let i=f+p;i<n;i++){ o[i] = a[i]==null ? null : (o[i-1]==null ? a[i] : al*a[i]+(1-al)*o[i-1]); }
+  return o;
+}
+function sma(a,p){
+  const o=new Array(a.length).fill(null);
+  for(let i=p-1;i<a.length;i++){ let s=0,ok=true; for(let j=i-p+1;j<=i;j++){ if(a[j]==null){ok=false;break} s+=a[j]; } if(ok) o[i]=s/p; }
+  return o;
+}
+function hi(a,p){ const o=new Array(a.length).fill(null); for(let i=p-1;i<a.length;i++){ let m=-Infinity; for(let j=i-p+1;j<=i;j++) m=Math.max(m,a[j]); o[i]=m; } return o; }
+function lo(a,p){ const o=new Array(a.length).fill(null); for(let i=p-1;i<a.length;i++){ let m=Infinity; for(let j=i-p+1;j<=i;j++) m=Math.min(m,a[j]); o[i]=m; } return o; }
+function sumN(a,p){ const o=new Array(a.length).fill(null); for(let i=p-1;i<a.length;i++){ let s=0,ok=true; for(let j=i-p+1;j<=i;j++){ if(a[j]==null){ok=false;break} s+=a[j]; } if(ok) o[i]=s; } return o; }
+const zip = (a,b,f) => a.map((v,i)=> (v==null||b[i]==null) ? null : f(v,b[i]));
+
+// ---------- parametri (preset come nello script) ----------
+function params(preset, directional, weights, confirm, confirmX){
+  const sc = preset==='Scalping', sw = preset==='Swing';
+  return { rsi: sc?7:sw?21:14, mf: sc?8:12, ms: sc?17:26, mg: 9, di: sc?10:14, adxSm: 14,
+           dir: directional, w: weights||DEFW, conf: Math.max(1,confirm||1), confX: Math.max(1,confirmX||1), stoch: sc?8:14, stAtr: sc?7:10, stF: sc?2.5:3.0, mfi: 14, don: 20, chop: 14 };
+}
+
+// ---------- calcolo di tutte le serie + voti per ogni barra ----------
+function analyze(B, P){
+  const n = B.c.length, c=B.c, h=B.h, l=B.l, v=B.v, op=B.o;
+  const tr = c.map((x,i)=> i===0 ? h[i]-l[i] : Math.max(h[i]-l[i], Math.abs(h[i]-c[i-1]), Math.abs(l[i]-c[i-1])));
+  // EMA200
+  const ema200 = smooth(c,200,'ema');
+  // RSI
+  const up = c.map((x,i)=> i===0?null:Math.max(x-c[i-1],0)), dn = c.map((x,i)=> i===0?null:Math.max(c[i-1]-x,0));
+  const rU = smooth(up,P.rsi,'rma'), rD = smooth(dn,P.rsi,'rma');
+  const rsi = zip(rU,rD,(u,d)=> d===0 ? 100 : 100-100/(1+u/d));
+  // MACD
+  const macd = zip(smooth(c,P.mf,'ema'), smooth(c,P.ms,'ema'), (a,b)=>a-b), sig = smooth(macd,P.mg,'ema');
+  // DMI / ADX
+  const upM = h.map((x,i)=> i===0?null:x-h[i-1]), dnM = l.map((x,i)=> i===0?null:l[i-1]-x);
+  const pDM = upM.map((u,i)=> u==null?null:(u>dnM[i]&&u>0?u:0)), mDM = dnM.map((d,i)=> d==null?null:(d>upM[i]&&d>0?d:0));
+  const trur = smooth(tr.map((x,i)=>i===0?null:x), P.di,'rma');
+  const pDI = zip(smooth(pDM,P.di,'rma'),trur,(a,t)=>100*a/t), mDI = zip(smooth(mDM,P.di,'rma'),trur,(a,t)=>100*a/t);
+  const dx = zip(pDI,mDI,(a,b)=> Math.abs(a-b)/((a+b)===0?1:(a+b)));
+  const adx = smooth(dx,P.adxSm,'rma').map(x=> x==null?null:100*x);
+  // Stoch
+  const hh = hi(h,P.stoch), ll = lo(l,P.stoch);
+  const stoch = c.map((x,i)=> hh[i]==null?null:(hh[i]===ll[i]?null:100*(x-ll[i])/(hh[i]-ll[i])));
+  // MFI
+  const src = c.map((x,i)=>(h[i]+l[i]+x)/3);
+  const upF = src.map((s,i)=> i===0?null:v[i]*(s-src[i-1]<=0?0:s)), dnF = src.map((s,i)=> i===0?null:v[i]*(s-src[i-1]>=0?0:s));
+  const mfi = zip(sumN(upF,P.mfi),sumN(dnF,P.mfi),(a,b)=> (a===0&&b===0)?null:(b===0?100:100-100/(1+a/b)));
+  // Supertrend (dir -1 = rialzista, come Pine)
+  const atrS = smooth(tr,P.stAtr,'rma'), dir = new Array(n).fill(null), lb = new Array(n).fill(null), ub = new Array(n).fill(null), stl = new Array(n).fill(null);
+  for(let i=0;i<n;i++){
+    if(atrS[i]==null) continue;
+    const m=(h[i]+l[i])/2; let u=m+P.stF*atrS[i], d=m-P.stF*atrS[i];
+    if(i>0 && atrS[i-1]!=null){
+      const pl=lb[i-1], pu=ub[i-1];  // dir[i-1]===1 <=> la linea precedente era la banda superiore
+      d = (d>pl || c[i-1]<pl) ? d : pl;
+      u = (u<pu || c[i-1]>pu) ? u : pu;
+      dir[i] = dir[i-1]===1 ? (c[i]>u?-1:1) : (c[i]<d?1:-1);
+    } else dir[i]=1;
+    lb[i]=d; ub[i]=u; stl[i]= dir[i]===-1 ? d : u;
+  }
+  const atr14 = smooth(tr,14,'rma'), hist = zip(macd,sig,(a,b)=>a-b);
+  // Volume relativo, Donchian, Chop
+  const vm = sma(v,20), relVol = v.map((x,i)=> vm[i]==null?null:(vm[i]===0?1:x/vm[i]));
+  const dH = hi(h,P.don), dL = lo(l,P.don), donMid = zip(dH,dL,(a,b)=>(a+b)/2);
+  const chopNum = zip(hi(h,P.chop),lo(l,P.chop),(a,b)=>Math.max(a-b,1e-9)), chopSum = sumN(tr,P.chop);
+  const chop = zip(chopNum,chopSum,(num,s)=> 100*Math.log(Math.max(s,1e-9)/num)/Math.log(P.chop));
+
+  const D = P.dir;
+  const names = D
+    ? ['Close vs EMA200 (distanza in ATR)','ADX 25 + direzione DI','MACD (istogramma e pendenza)','RSI (>55 / <45)','Supertrend','Stoch (>50 / <50)','MFI (>50 / <50)','Volume ≥ 1 + direzione candela','Close nel canale Donchian']
+    : ['Close > EMA200','ADX > 25','MACD > Signal','RSI tra 40 e 65','Supertrend rialzista','Stoch > 50','MFI > 50','Volume relativo ≥ 1','Close > Donchian mid'];
+  const sg = (cond,x,y) => x==null||y==null ? null : (cond ? 1 : -1);
+  const votesAt = i => D ? [
+    ema200[i]==null?null:(atr14[i]>0 ? Math.max(-1,Math.min(1,(c[i]-ema200[i])/(2*atr14[i]))) : (c[i]>ema200[i]?1:c[i]<ema200[i]?-1:0)),
+    adx[i]==null||pDI[i]==null||mDI[i]==null?null:(adx[i]>25?(pDI[i]>mDI[i]?1:-1):0),
+    hist[i]==null?null:(hist[i]===0?0:((hist[i-1]==null||!(atr14[i]>0))?Math.sign(hist[i]):Math.sign(hist[i])*(0.75+0.25*Math.max(-1,Math.min(1,Math.sign(hist[i])*(hist[i]-hist[i-1])/atr14[i]/0.03))))),
+    rsi[i]==null?null:(rsi[i]>55?1:rsi[i]<45?-1:0),
+    dir[i]==null?null:(dir[i]<0?1:-1),
+    stoch[i]==null?null:(stoch[i]>50?1:stoch[i]<50?-1:0),
+    mfi[i]==null?null:(mfi[i]>50?1:mfi[i]<50?-1:0),
+    relVol[i]==null?null:(relVol[i]>=1?(c[i]>op[i]?1:c[i]<op[i]?-1:0):0),
+    donMid[i]==null?null:((dH[i]-dL[i])>0 ? Math.max(-1,Math.min(1,(c[i]-donMid[i])/((dH[i]-dL[i])/2))) : 0)
+  ] : [
+    ema200[i]==null?null:+(c[i]>ema200[i]),
+    adx[i]==null?null:+(adx[i]>25),
+    (macd[i]==null||sig[i]==null)?null:+(macd[i]>sig[i]),
+    rsi[i]==null?null:+(rsi[i]>=40&&rsi[i]<=65),
+    dir[i]==null?null:+(dir[i]<0),
+    stoch[i]==null?null:+(stoch[i]>50),
+    mfi[i]==null?null:+(mfi[i]>50),
+    relVol[i]==null?null:+(relVol[i]>=1),
+    donMid[i]==null?null:+(c[i]>donMid[i])
+  ];
+  // posizione -100..+100: voti direzionali = media pesata in [-1,1]; voti originali = media 0..1 riportata su -100..+100
+  const posOf = vs => {
+    let sw=0, sv=0, k=0, m0=0;
+    vs.forEach((x,j)=>{ if(x==null) return; if(D){ sw+=P.w[j]; sv+=P.w[j]*x; } else { k++; m0+=x; } });
+    if(D) return sw>0 ? sv/sw*100 : null;
+    return k ? (2*m0/k-1)*100 : null;
+  };
+  const poss = []; for(let i=0;i<n;i++){ poss.push(posOf(votesAt(i))); }
+  const scores = poss.map(x=> x==null?null:Math.round((x+100)/2));
+  // zona grezza (-1 short, 0 neutra, +1 long) e zona confermata: cambia solo dopo P.conf barre consecutive nella nuova zona
+  const zoneOf = x => x==null?null:(x<=-33?-1:x>=33?1:0);
+  const zr = poss.map(zoneOf), conf = new Array(n).fill(null);
+  // uscita verso NEUTRA: P.confX barre; ingresso in una zona o inversione LONG↔SHORT: P.conf barre
+  const need = (from,to) => (from!==0 && to===0) ? P.confX : P.conf;
+  let cur=null, cand=null, cnt=0;
+  for(let i=0;i<n;i++){
+    const z = zr[i];
+    if(z!=null){
+      if(cur==null){ cur=z; cand=null; cnt=0; }
+      else if(z===cur){ cand=null; cnt=0; }
+      else { if(z===cand) cnt++; else { cand=z; cnt=1; } if(cnt>=need(cur,z)){ cur=z; cand=null; cnt=0; } }
+    } else { cand=null; cnt=0; }
+    conf[i]=cur;
+  }
+  const pend = cand==null ? null : {z:cand, k:cnt, n:need(cur,cand)};
+  // valori leggibili per la tabella (ultima barra)
+  const L = n-1;
+  const vals = [
+    ema200[L]==null?'n/d':fmt(c[L])+' / '+fmt(ema200[L]),
+    fmt(adx[L],1), (macd[L]==null||sig[L]==null)?'n/d':fmt(macd[L],4)+' / '+fmt(sig[L],4),
+    fmt(rsi[L],1), dir[L]==null?'n/d':fmt(stl[L]), fmt(stoch[L],1), fmt(mfi[L],1),
+    relVol[L]==null?'n/d':fmt(relVol[L])+'x', donMid[L]==null?'n/d':fmt(c[L])+' / '+fmt(donMid[L])
+  ];
+  const regimeRange = (adx[L]!=null && adx[L]<20) || (chop[L]!=null && chop[L]>61.8);
+  const regime = adx[L]==null ? 'n/d' : regimeRange ? 'Range' : (ema200[L]!=null && c[L]>ema200[L] ? 'Trend su' : 'Trend giù');
+  return { D, w:P.w, N:P.conf, NX:P.confX, conf, confL:conf[n-1], pend, names, vals, votes: votesAt(L), scores, score: scores[L], pos: poss[L], regime, adx:adx[L], chop:chop[L],
+           pDI:pDI[L], mDI:mDI[L], n };
+}
+
+// ---------- UI ----------
+function render(sym, B, A){
+  const s = A.score;
+  if(s==null){ $('st').textContent='Dati insufficienti per calcolare il punteggio.'; return; }
+  $('turtle').style.left = s+'%';
+  const pos = Math.round(A.pos);
+  const ZN = {'-1':['ZONA SHORT','r'],'0':['ZONA NEUTRA','y'],'1':['ZONA LONG','g']};
+  const z = ZN[String(A.confL)] || ZN['0'];
+  // stato intermedio: la zona confermata resta LONG/SHORT, ma se è in corso una conferma di uscita o di inversione lo si segnala
+  let zl = z[0], zc = z[1];
+  const inZone = A.confL===1 || A.confL===-1;
+  if(inZone && A.pend){
+    const side = A.confL===1 ? 'LONG' : 'SHORT', cnt = ' ('+A.pend.k+'/'+A.pend.n+')';
+    if(A.pend.z===0){ zl = side+' in indebolimento'+cnt; zc = 'y'; }
+    else if(A.pend.z===-A.confL){ zl = 'Inversione in attesa → '+(A.pend.z===1?'LONG':'SHORT')+cnt; zc = 'y'; }
+  } else if(inZone){ zl = (A.confL===1?'LONG':'SHORT')+' confermato'; }
+  $('zone').className = zc;
+  $('zone').textContent = zl+' ('+(pos>0?'+':'')+pos+')  ·  punteggio '+s+'/100';
+  const pendTxt = (A.pend && !inZone) ? ' · in attesa di conferma → '+ZN[String(A.pend.z)][0].replace('ZONA ','')+' ('+A.pend.k+'/'+A.pend.n+')' : '';
+  const ok = A.votes.filter(x=>x!=null);
+  const pos1 = ok.filter(x=>x>0).length, neg = ok.filter(x=>x<0).length, neu = ok.filter(x=>x===0).length;
+  $('parts').textContent = (A.D ? pos1+' rialzisti · '+neg+' ribassisti · '+neu+' neutri' : pos1+' voti positivi')+' su '+ok.length+' disponibili · '+A.regime+pendTxt;
+  const rows = A.names.map((nm,i)=>{
+    const vt = A.votes[i];
+    const txt = vt==null ? 'n/d' : A.D ? (vt>0?'▲ +':vt<0?'▼ ':'– ')+vt.toFixed(2) : (vt?'▲ sì':'▼ no');
+    return `<tr><td>${nm}${A.D?' <span class="m">· peso '+A.w[i]+'</span>':''}</td><td>${A.vals[i]}</td><td class="${vt==null?'m':vt>0?'g':vt<0?'r':'y'}">${txt}</td></tr>`;
+  });
+  rows.push(`<tr><td>Regime</td><td>ADX ${fmt(A.adx,1)} · Chop ${fmt(A.chop,1)} · +DI/−DI ${fmt(A.pDI,1)}/${fmt(A.mDI,1)}</td><td class="${A.regime==='Trend su'?'g':A.regime==='Trend giù'?'r':'y'}">${A.regime}</td></tr>`);
+  $('tbl').innerHTML = rows.join('');
+  $('note').textContent = A.D
+    ? 'Voti direzionali da −1 (ribassista) a +1 (rialzista): EMA200 e Donchian sono graduati sulla distanza, il MACD vale da ±0,5 a ±1 in base alla variazione dell’istogramma rispetto alla barra precedente, normalizzata sull’ATR, gli altri valgono ±1 o 0. Posizione = media pesata dei voti disponibili (−100…+100); punteggio 0-100 = (posizione+100)/2. La zona (short ≤ −33, long ≥ +33) cambia solo dopo '+A.N+' barre consecutive nella nuova zona ('+A.NX+' per l’uscita verso NEUTRA); la tartaruga mostra la posizione grezza.'
+    : 'Voti originali dello script Pine: RSI tra 40 e 65 e ADX > 25 contano come voto positivo anche in discesa (non direzionali). I voti non calcolabili sono esclusi.';
+  $('out').style.display='block';
+  draw(A);
+}
+
+function draw(A){
+  const cv = $('cv'), dpr = window.devicePixelRatio||1, W = cv.clientWidth, H = cv.clientHeight;
+  cv.width=W*dpr; cv.height=H*dpr;
+  const c = cv.getContext('2d'); c.scale(dpr,dpr);
+  const css = getComputedStyle(document.documentElement);
+  const pts = A.scores.map((s,i)=>s==null?null:{i,s,z:A.conf[i]}).filter(Boolean);
+  if(pts.length<2) return;
+  const x = k => 30 + k/(pts.length-1)*(W-38), y = v => 8 + (100-v)/100*(H-20);
+  const bw = (W-38)/(pts.length-1)+0.5;
+  pts.forEach((p,k)=>{
+    if(p.z===1) c.fillStyle='rgba(61,220,132,.18)'; else if(p.z===-1) c.fillStyle='rgba(255,92,92,.18)'; else return;
+    c.fillRect(x(k)-bw/2,y(100),bw,y(0)-y(100));
+  });
+  c.font='11px sans-serif'; c.textBaseline='middle';
+  [[0],[33],[50],[66],[100]].forEach(([v])=>{
+    c.strokeStyle=css.getPropertyValue('--bd').trim(); c.setLineDash([3,3]); c.beginPath(); c.moveTo(30,y(v)); c.lineTo(W-8,y(v)); c.stroke();
+    c.setLineDash([]); c.fillStyle=css.getPropertyValue('--mu'); c.fillText(String(v),2,y(v));
+  });
+  c.strokeStyle=css.getPropertyValue('--a').trim(); c.lineWidth=2; c.beginPath();
+  pts.forEach((p,k)=>{ k?c.lineTo(x(k),y(p.s)):c.moveTo(x(k),y(p.s)); }); c.stroke();
+}
+
+function workerUrl(base,sym,range,interval){
+  return base + (base.includes('?')?'&':'?') + `symbol=${encodeURIComponent(sym)}&interval=${interval}&range=${encodeURIComponent(range)}`;
+}
+
+// ===== MISURATORE DI ACCELERAZIONE DEL SEGNALE (START) =====
+// Indipendente da zone e conferme: legge solo il punteggio direzionale (posizione −100…+100) già calcolato.
+// Campiona ad ogni aggiornamento riuscito con timestamp reali; confronta solo campioni entro ±TOL dal tempo richiesto.
+// TOL: distanza massima di un campione dall'orario richiesto (3, 5, 6 min); STALE: età massima dell'ultimo campione;
+// MAXLAT: latenza massima di una richiesta Yahoo per accettarne il campione; FRESH: età massima dell'ultima candela Yahoo;
+// MIDMIN/MIDMAX: tempo minimo/massimo (min) tra i punti medi dei due intervalli per calcolare l'accelerazione temporale;
+// NEUT: |punteggio| sotto cui è NEUTRO; FLAT: variazione (punti su 3 min) sotto cui è "stabile".
+const ACC = { hist:[], key:null, eps:[], lastBarMs:null, fr:null, TOL:12000, KEEP:8*60000, STALE:30000, MAXLAT:10000, FRESH:180000, MIDMIN:2, MIDMAX:4, NEUT:10, FLAT:2 };
+function accAt(h, target){
+  let best=null, bd=Infinity;
+  for(const x of h){ const d=Math.abs(x.t-target); if(d<=ACC.TOL && d<bd){ best=x; bd=d; } }
+  return best;
+}
+const ACC_DAILY = { title:'DISPONIBILE SOLO IN MODALITÀ INTRADAY 1 MIN', note:'Il campionamento ogni 10 secondi è attivo solo con dati intraday.' };
+// chiave della sessione di misura: se cambia (simbolo, modalità, storico, preset, voti, pesi) lo storico non è confrontabile e riparte da zero
+const accKeyNow = () => [$('sym').value.trim().toUpperCase(), $('mode').value, $('range').value.trim()||($('mode').value==='i'?'5d':'2y'), $('preset').value, $('votes').value, JSON.stringify(readW())].join('|');
+function accClearAll(){ ACC.hist=[]; ACC.eps=[]; ACC.lastBarMs=null; ACC.fr=null; }
+function accSync(key){ if(ACC.key!==key){ accClearAll(); ACC.key=key; } }
+function accReset(){
+  accClearAll(); ACC.key=null;
+  accRender(null, $('mode').value==='i' ? { title:'DATI INSUFFICIENTI', note:'Raccolta dei campioni ripartita da zero.' } : ACC_DAILY);
+}
+function accPush(pos, t){
+  if(pos==null || !isFinite(pos)) return;
+  const h=ACC.hist;
+  if(h.length && t<h[h.length-1].t){ h.length=0; ACC.eps=[]; }   // orologio tornato indietro: lo storico non è più affidabile
+  const l=h[h.length-1];
+  if(l && t-l.t<3000) h[h.length-1]={t,pos}; else h.push({t,pos});
+  while(h.length && t-h[0].t>ACC.KEEP) h.shift();
+}
+const accAge = ms => ms<120000 ? Math.round(ms/1000)+' s' : Math.round(ms/60000)+' min';
+// Freschezza dell'ultima candela Yahoo. Un periodo di dati fermi è un "episodio" che parte dall'orario dell'ultima candela
+// e termina al primo campione fresco successivo: nessun intervallo di calcolo può attraversarlo (l'assenza di aggiornamenti non è stabilità).
+function accCheckFresh(now){
+  if(ACC.lastBarMs==null){ ACC.fr=null; return null; }
+  ACC.eps = ACC.eps.filter(e => e.e==null || now-e.e<=ACC.KEEP);
+  const age=now-ACC.lastBarMs, ok=age<=ACC.FRESH, open=ACC.eps.find(e=>e.e==null);
+  if(!ok && !open) ACC.eps.push({s:ACC.lastBarMs, e:null});
+  if(ok && open) open.e=now;
+  return ACC.fr={ ok, age };
+}
+function accCompute(h){
+  const cur=h[h.length-1];
+  const p3=accAt(h,cur.t-180000), p5=accAt(h,cur.t-300000), p6=accAt(h,cur.t-360000);
+  // un intervallo [a,b] è utilizzabile solo se non attraversa un periodo di dati Yahoo fermi
+  const clear = (a,b) => !ACC.eps.some(e => e.s<b && (e.e==null || e.e>a));
+  let gap=false;
+  const ok3 = !!p3 && (clear(p3.t,cur.t) || (gap=true, false));
+  const ok5 = !!p5 && (clear(p5.t,cur.t) || (gap=true, false));
+  const okP = !!(p3&&p6) && (clear(p6.t,p3.t) || (gap=true, false));
+  const d3 = ok3 ? cur.pos-p3.pos : null, d5 = ok5 ? cur.pos-p5.pos : null;
+  const dp = okP ? p3.pos-p6.pos : null;                   // variazione dei 3 minuti precedenti (da −6 a −3 min)
+  // velocità in punti/minuto sui minuti effettivamente trascorsi tra i timestamp reali dei campioni
+  const mCur  = ok3 ? (cur.t-p3.t)/60000 : null;
+  const mPrev = okP ? (p3.t-p6.t)/60000 : null;
+  const vCur  = (d3!=null && mCur>0)  ? d3/mCur  : null;
+  const vPrev = (dp!=null && mPrev>0) ? dp/mPrev : null;
+  const dv = (vCur!=null && vPrev!=null) ? vCur-vPrev : null;    // VARIAZIONE DELLA VELOCITÀ, punti/minuto
+  // accelerazione temporale (punti/minuto²) = variazione della velocità / tempo tra i punti medi dei due intervalli
+  let dtm=null, acct=null;
+  if(dv!=null){
+    dtm = (((p3.t+cur.t)/2) - ((p6.t+p3.t)/2))/60000;
+    if(isFinite(dtm) && dtm>=ACC.MIDMIN && dtm<=ACC.MIDMAX) acct = dv/dtm; else dtm=null;
+  }
+  return { pos:cur.pos, d3, d5, dp, mCur, mPrev, vCur, vPrev, dv, dtm, acct, gap, span:cur.t-h[0].t };
+}
+function accClassify(r){
+  const F=ACC.FLAT;
+  if(r.d3==null) return null;
+  const side = r.pos>0 ? 'LONG' : 'SHORT';
+  if(Math.abs(r.pos)<ACC.NEUT) return { state:'NEUTRO', cls:'y', final:'NEUTRO' };
+  if(Math.abs(r.d3)<F) return { state:side+' stabile', cls:'y', final:'NEUTRO' };
+  const up = r.d3>0, strengthening = (r.pos>0)===up;
+  return strengthening ? { state:side+' in rafforzamento', cls:r.pos>0?'g':'r', final:'RAFFORZAMENTO' }
+                       : { state:side+' in indebolimento', cls:'y', final:'INDEBOLIMENTO' };
+}
+function accTrend(r){
+  if(r.dv==null) return 'DATI INSUFFICIENTI';
+  const f=ACC.FLAT/3;                                       // soglia (FLAT punti su 3 min) espressa in punti/minuto: applicata alla variazione della velocità
+  if(Math.abs(r.dv)<f) return 'VELOCITÀ COSTANTE';
+  if(Math.abs(r.vPrev)>=f && Math.abs(r.vCur)>=f && Math.sign(r.vPrev)!==Math.sign(r.vCur)) return 'INVERSIONE';
+  if(Math.abs(r.vCur)<f) return 'IN RALLENTAMENTO';
+  return Math.sign(r.vCur)*r.dv>0 ? 'IN ACCELERAZIONE' : 'IN RALLENTAMENTO';
+}
+function accRender(r, msg){
+  const el=$('accState'), tb=$('accTbl'), nt=$('accNote');
+  const num = (v,d,u) => { if(v==null) return 'DATI INSUFFICIENTI'; const t=v.toFixed(d), z=parseFloat(t)===0; return (v>0&&!z?'+':'')+(z?(0).toFixed(d):t)+' '+u; };
+  const sv = v => num(v,2,'punti/min'), sg = v => num(v,1,'punti'), sa = v => num(v,3,'punti/min²');
+  const frRow = () => ACC.fr ? `<tr><td>Freschezza dati Yahoo</td><td></td><td class="${ACC.fr.ok?'':'y'}">${ACC.fr.ok?'AGGIORNATI':'DATI NON AGGIORNATI'} · ultima candela ${accAge(ACC.fr.age)} fa</td></tr>` : '';
+  if(msg){ el.className=msg.cls||'m'; el.textContent=msg.title; tb.innerHTML=frRow(); nt.textContent=msg.note||''; return; }
+  const c = accClassify(r);
+  if(!c){
+    const need = 180000-ACC.TOL;
+    el.className='y'; el.textContent='DATI INSUFFICIENTI';
+    tb.innerHTML = `<tr><td>Punteggio attuale</td><td></td><td>${(r.pos>0?'+':'')+Math.round(r.pos)}</td></tr>`+frRow();
+    nt.textContent = r.gap
+      ? 'Nell’intervallo di 3 minuti c’è stato un periodo di dati Yahoo fermi: servono nuovi campioni validi prima di mostrare un’indicazione.'
+      : r.span<need
+        ? 'Storico raccolto: '+Math.round(r.span/1000)+' s su circa 180 s necessari. Il misuratore parte da zero ad ogni apertura o cambio di simbolo, modalità, preset, voti o pesi.'
+        : 'Manca un campione valido a circa 3 minuti fa (aggiornamenti mancanti): non vengono inventati valori né confrontati campioni con intervalli errati.';
+    return;
+  }
+  el.className=c.cls; el.textContent=c.state;
+  const tcls = c.final==='RAFFORZAMENTO' ? c.cls : 'y';
+  tb.innerHTML = [
+    ['Punteggio attuale', (r.pos>0?'+':'')+Math.round(r.pos), ''],
+    ['Variazione ultimi 3 minuti', sg(r.d3), r.d3==null?'m':''],
+    ['Variazione ultimi 5 minuti', sg(r.d5), r.d5==null?'m':''],
+    ['Velocità precedente'+(r.mPrev==null?'':' (su '+r.mPrev.toFixed(2)+' min)'), sv(r.vPrev), r.vPrev==null?'m':''],
+    ['Velocità attuale (su '+r.mCur.toFixed(2)+' min)', sv(r.vCur), ''],
+    ['VARIAZIONE DELLA VELOCITÀ (attuale − precedente)', sv(r.dv), r.dv==null?'m':''],
+    ['Accelerazione temporale'+(r.dtm==null?'':' (variazione ÷ '+r.dtm.toFixed(2)+' min tra i punti medi)'), sa(r.acct), r.acct==null?'m':''],
+    ['Interpretazione', accTrend(r), r.dv==null?'m':''],
+    ['Indicazione finale', c.final, tcls]
+  ].map(x=>`<tr><td>${x[0]}</td><td></td><td class="${x[2]}">${x[1]}</td></tr>`).join('') + frRow();
+  nt.textContent = 'Misura la variazione effettiva del punteggio direzionale (−100…+100) campionato ogni ~10 s: non è una probabilità di guadagno né un segnale anticipato. Stato e indicazione finale usano la variazione a 3 minuti; soglie: |punteggio| < '+ACC.NEUT+' = NEUTRO, |variazione| < '+ACC.FLAT+' punti = stabile. Le velocità sono in punti/minuto sui minuti effettivi tra i timestamp reali dei campioni. La variazione della velocità (punti/min) è la differenza tra le due velocità e fissa l’interpretazione (costante se < '+(ACC.FLAT/3).toFixed(2)+' punti/min); l’accelerazione temporale (punti/min²) la divide per il tempo tra i punti medi dei due intervalli. I periodi di dati Yahoo fermi sono esclusi dai calcoli.'
+    + (r.d5==null ? ' Variazione a 5 min: dati insufficienti.' : '') + (r.dv==null ? ' Velocità precedente, variazione della velocità e accelerazione: servono 6 min di campioni validi.' : (r.acct==null ? ' Accelerazione temporale: tempo tra i punti medi non valido.' : ''));
+}
+function accShow(now, extra){
+  extra=extra||'';
+  const fr=accCheckFresh(now);
+  if(fr && !fr.ok){
+    accRender(null,{ title:'DATI NON AGGIORNATI', cls:'y', note:'L’ultima candela Yahoo risale a '+accAge(fr.age)+' fa (soglia '+Math.round(ACC.FRESH/1000)+' s): calcolo sospeso e campioni di questo periodo non utilizzati. L’assenza di aggiornamenti non indica stabilità del segnale. Alla ripresa dei dati servono nuovi campioni validi prima di mostrare un’indicazione.'+extra });
+    return;
+  }
+  const h=ACC.hist;
+  if(!h.length){ accRender(null,{title:'DATI INSUFFICIENTI', note:'Nessun campione valido ancora raccolto.'+extra}); return; }
+  const age=now-h[h.length-1].t;
+  if(age>ACC.STALE){ accRender(null,{title:'DATI INSUFFICIENTI', note:'L’ultimo campione valido risale a '+Math.round(age/1000)+' s fa (aggiornamenti mancanti): il misuratore attende nuovi campioni.'+extra}); return; }
+  accRender(accCompute(h));
+  if(extra) $('accNote').textContent += extra;
+}
+// t0 = istante di invio della richiesta Yahoo; key = chiave della sessione al momento dell'invio
+function accUpdate(key, A, B, intra, t0){
+  if(!intra){ accReset(); return; }                         // modalità giornaliera: storico e chiave azzerati
+  accSync(key);
+  const now=Date.now(), lat=now-t0; let extra='';
+  ACC.lastBarMs = B.t[B.t.length-1]*1000;
+  const fr=accCheckFresh(now);
+  if(lat>ACC.MAXLAT) extra=' Ultimo aggiornamento scartato: risposta Yahoo lenta ('+Math.round(lat/1000)+' s), orario del campione non affidabile.';
+  else if(fr && fr.ok) accPush(A.pos, now);                 // con dati fermi nessun campione viene registrato
+  accShow(now, extra);
+}
+// dopo una richiesta fallita: ricontrolla freschezza ed età dell'ultimo campione senza aggiungerne
+function accTick(){
+  if($('mode').value!=='i') return;
+  if(ACC.key!==null && ACC.key!==accKeyNow()){ accReset(); return; }
+  accShow(Date.now(), '');
+}
+
+// ===== MISURATORE DI ACCELERAZIONE DEL SEGNALE (END) =====
+
+let last=null, busy=false;
+async function run(){
+  if(busy) return;
+  const wk = $('worker').value.trim(), sym = $('sym').value.trim().toUpperCase();
+  if(!wk){ $('st').textContent="Inserisci l'URL del Worker Yahoo."; return; }
+  const intra = $('mode').value==='i', range = $('range').value.trim() || (intra?'5d':'2y');
+  store.set('mc_worker',wk); store.set('mc_sym',sym); store.set('mc_mode',$('mode').value);
+  store.set('mc_preset',$('preset').value); store.set('mc_votes',$('votes').value);
+  const W = readW(), N = Math.max(1, Math.min(20, parseInt($('conf').value)||1)); store.set('mc_w',JSON.stringify(W)); const NX = Math.max(1, Math.min(20, parseInt($('confx').value)||1)); store.set('mc_conf',String(N)); store.set('mc_confx',String(NX)); store.set('mc_range_'+$('mode').value, range);
+  const accKey0 = accKeyNow(), accT0 = Date.now();
+  $('st').textContent='Scarico dati…'; $('go').disabled=true; busy=true;
+  try{
+    const r = await fetch(workerUrl(wk,sym,range,intra?'1m':'1d'));
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const j = await r.json();
+    const res0 = j.chart && j.chart.result && j.chart.result[0];
+    if(!res0) throw new Error((j.chart&&j.chart.error&&j.chart.error.description)||'risposta senza dati');
+    const gr = res0.meta && res0.meta.dataGranularity;
+    if(gr && gr!==(intra?'1m':'1d')) throw new Error('il Worker ha restituito dati '+gr+' invece di '+(intra?'1 minuto':'giornalieri'));
+    if(res0.meta && res0.meta.symbol && res0.meta.symbol.toUpperCase()!==sym) throw new Error('il Worker ha restituito '+res0.meta.symbol+' invece di '+sym);
+    const ts = res0.timestamp||[], q = res0.indicators.quote[0];
+    const B = {t:[],o:[],c:[],h:[],l:[],v:[]};
+    ts.forEach((t,i)=>{
+      const cl=q.close[i]; if(cl==null) return;
+      B.t.push(t); B.c.push(cl); B.o.push(q.open && q.open[i]!=null ? q.open[i] : cl);
+      B.h.push(q.high && q.high[i]!=null ? q.high[i] : cl);
+      B.l.push(q.low  && q.low[i]!=null  ? q.low[i]  : cl);
+      B.v.push(q.volume && q.volume[i]!=null ? q.volume[i] : 0);
+    });
+    if(B.c.length < 200) throw new Error(`solo ${B.c.length} barre: ne servono almeno 200 per l’EMA200 (aumenta Storico)`);
+    const A = analyze(B, params($('preset').value, $('votes').value==='d', W, N, NX));
+    last = A;
+    render(sym,B,A);
+    try{ if(accKeyNow()===accKey0) accUpdate(accKey0, A, B, intra, accT0); }catch(e){ console.error('misuratore accelerazione:',e); } // risposta di una sessione precedente → campione scartato
+    const tz = intra ? 'Europe/Rome' : (res0.meta&&res0.meta.exchangeTimezoneName)||'America/New_York';
+    const when = new Date(B.t[B.t.length-1]*1000).toLocaleString('it-IT',{timeZone:tz});
+    $('st').textContent = `${sym} · ${B.c.length} barre ${intra?'da 1 min':'giornaliere'} · ultima barra ${when} (${tz}) · preset ${$('preset').value} · voti ${$('votes').value==='d'?'direzionali':'originali'} · conferma ${N} barre`
+      + (A.votes.some(x=>x==null) ? ' · voti n/d: '+A.names.filter((nm,i)=>A.votes[i]==null).join(', ') : '');;
+  }catch(e){
+    $('st').textContent='Errore: '+e.message;
+    try{ accTick(); }catch(e2){ console.error('misuratore accelerazione:',e2); }
+  }finally{ $('go').disabled=false; busy=false; }
+}
+$('go').onclick = run;
+$('mode').onchange = () => { try{ accReset(); }catch(e){ console.error(e); } $('range').value = store.get('mc_range_'+$('mode').value) || ($('mode').value==='i'?'5d':'2y'); run(); };
+$('preset').onchange = run;
+$('votes').onchange = run;
+$('conf').onchange = run;
+$('confx').onchange = run;
+WN.forEach((n,i)=>{ $('w'+i).onchange = run; });
+$('wreset').onclick = () => { WN.forEach((n,i)=>{ $('w'+i).value = DEFW[i]; }); run(); };
+window.addEventListener('resize',()=>{ if(last) draw(last); });
+if($('worker').value) run();
+setInterval(()=>{ if($('mode').value==='i' && $('worker').value.trim()) run(); }, 10000); // aggiornamento automatico ogni 10 s (solo intraday)
+</script>
+</body>
+</html>
